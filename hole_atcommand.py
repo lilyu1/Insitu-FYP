@@ -1,6 +1,6 @@
 # coding=utf-8
 
-import octoprint.plugin
+import logging
 
 
 def custom_atcommand_handler(comm, phase, command, parameters, tags=None, *args, **kwargs):
@@ -13,7 +13,7 @@ def custom_atcommand_handler(comm, phase, command, parameters, tags=None, *args,
     # Split parameters to get coordinates
     coords = parameters.split()
     if len(coords) < 2 or (len(coords) % 2 != 0):
-        self._logger.info("Invalid @hole command. Correct usage: @hole x1 y1 x2 y2")
+        logging.info("Invalid @hole command. Correct usage: @hole x1 y1 x2 y2")
         return
     try:
         coords_list = list(map(float, coords))
@@ -22,7 +22,7 @@ def custom_atcommand_handler(comm, phase, command, parameters, tags=None, *args,
         for i in range(0, len(coords_list), 2):
                 coordinate_pairs.append((coords_list[i], coords_list[i + 1]))
     except ValueError:
-        self._logger.info("Invalid coordinates. Make sure to provide four numerical values.")
+        logging.info("Invalid coordinates. Make sure to provide pairs of numerical values.")
         return
 
 
