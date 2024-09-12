@@ -36,7 +36,13 @@ class HoleCommandAPIPlugin(octoprint.plugin.SimpleApiPlugin):
             self.coordinates = coordinates3d
             self._logger.info(f"Extracted coordinates from @hole command: {self.coordinates}")
             #once extracted successfully, we tell printer to pause
-            comm.setPause(True, tags=tags)
+            #comm.setPause(True, tags=tags)
+            #move bed forward backward
+            comm.sendCommand('G91')
+            comm.sendCommand('G1 Z10')
+            comm.sendCommand('G90')
+            comm.sendCommand('G0 Y220')
+            comm.sendCommand('@pause')
         except ValueError:
             self._logger.error("Failed to extract coordinates from @hole command")
 
