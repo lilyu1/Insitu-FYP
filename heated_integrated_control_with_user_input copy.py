@@ -2,6 +2,7 @@ import requests, time
 import asyncio
 from asyncua import Client, Node, ua, ua_client
 import datetime
+import json
 
 async def main():
     # ~~params~~
@@ -12,10 +13,13 @@ async def main():
     urlPrinter = 'http://'+IPadd+':5000/api/printer' # General Printer Info
     urlJob = 'http://'+IPadd+':5000/api/job' # Job Control
     urlHole = 'http://'+IPadd+':5000/api/plugin/holeCommandAPIplugin'
+    urlHead = 'http://'+IPadd+':5000/api/printer/printhead'  # Printhead control (Jogging)
+    urlTool = 'http://'+IPadd+':5000/api/printer/tool'   # Tool contorl (temperature)
     opcurl = 'opc.tcp://172.32.1.236:4840'
     nP = 3
     nodeStr = 'ns=2'+str(nP)+';s=R'+str(nP)
-    progID = 74
+    magNodeStr = 'ns=3;s='
+    progID = 75
 
     # ~~functions~~
     
@@ -89,26 +93,60 @@ async def main():
 
     async def get_hole_coords():
         response_get = requests.get(f'{urlHole}?apikey={apikey}')
-        hole_coords = response_get.json()['coordinates']
-        print("coordinates of holes:", hole_coords) #[[123,456,2],[111,222,2]]
-        return hole_coords
+        json_coords = response_get.json()['coordinates']
+        print("coordinates of holes:", json_coords) #[[123,456,2],[111,222,2]]
+        str_coord = str(json_coords)
+        num_holes = len(eval(str_coord))
+        return num_holes, str_coord
     
-    async def send_coordinates_to_opcua(client, hole_coords):
-        for i, (x, y, z) in enumerate(hole_coords):
-            try:
-                # Assuming you have node definitions for each coordinate (e.g., NODE_Hole_X1, NODE_Hole_Y1, NODE_Hole_Z1, etc.)
-                node_x = client.get_node(f"ns=2;i={1000 + i*3}")  # Replace with actual node ID for X
-                node_y = client.get_node(f"ns=2;i={1001 + i*3}")  # Replace with actual node ID for Y
-                node_z = client.get_node(f"ns=2;i={1002 + i*3}")  # Replace with actual node ID for Z
-                
-                # Set the values on the OPC UA server
-                await node_x.set_value(float(x), ua.VariantType.Float)
-                await node_y.set_value(float(y), ua.VariantType.Float)
-                await node_z.set_value(float(z), ua.VariantType.Float)
+    async def send_coordinates_to_opcua(client, write_magCount, write_magInfo):
 
-                print(f"Sent coordinates to OPC UA: X={x}, Y={y}, Z={z}")
-            except Exception as e:
-                print(f"Failed to send coordinates to OPC UA for hole {i+1}: {e}")
+        try:
+            NODE_magCount = client.get_node(magNodeStr+'magCount')
+            NODE_magInfo = client.get_node(nodeStr+'magInfo')
+        except:
+            print("Error: Node Definition")
+                
+        # Set the values on the OPC UA server
+        await NODE_magCount.set_value(write_magCount,ua.VariantType.Int32)
+        print('magCount sent')
+        await NODE_magInfo.set_value(write_magInfo,ua.VariantType.String)
+        print('magInfo sent')
+
+    def heat_inserts(str_coord, heat_temp=220, extrude_speed=5000, lower_down_speed=100, lower_down_amount=-5):
+        coords = json.loads(str_coord)
+        
+        for coord in coords:
+            x, y, z = coord
+            print(f'Moving to position: X={x}, Y={y}, Z={z}')
+
+            # Jog the head to each coordinate
+            jog_response = requests.post(urlHead + apikey, json={"command": "jog", "x": x, "y": y, "z": z, "absolute": False, "speed": extrude_speed})
+            if jog_response.status_code == 200:
+                print(f'Jogged to position: X={x}, Y={y}, Z={z}')
+            else:
+                print(f'Failed to jog to position: X={x}, Y={y}, Z={z}')
+
+            # Heat up the extruder
+            heat_response = requests.post(urlTool + apikey, json={"command": "target", "targets": {"tool0": heat_temp}})
+            if heat_response.status_code == 200:
+                print(f'Heating up extruder to {heat_temp}°C')
+            else:
+                print(f'Failed to heat extruder to {heat_temp}°C')
+
+            # Wait until the temperature is reached
+            time.sleep(5)
+
+            # Lower the extruder
+            lower_response = requests.post(urlHead + apikey, json={"command": "jog", "x": 0, "y": 0, "z": lower_down_amount, "absolute": False, "speed": lower_down_speed})
+            if lower_response.status_code == 200:
+                print(f'Lowered extruder by {lower_down_amount} mm')
+            else:
+                print(f'Failed to lower extruder')
+
+            # Wait before moving to the next hole
+            time.sleep(2)
+
 
 
     #tell the robot to start
@@ -130,14 +168,18 @@ async def main():
         await polling_printer_pause()
 
         # get hole coordinates from holecommandapi plugin
-        hole_coords = await get_hole_coords()
+        num_holes, str_coord = await get_hole_coords()
 
         # send to opcua server
-
+        send_coordinates_to_opcua(client, num_holes, str_coord)
 
         #3. change the values by using set value
         await robot_startprog()
-        #4 poll for status to check when program is done running then resume
+
+        #4. move printer to over the coords
+        await heat_inserts(str_coord)
+
+        #5 poll for status to check when program is done running then resume
         await printer_resume()
         
 
