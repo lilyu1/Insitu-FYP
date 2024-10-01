@@ -30,7 +30,7 @@ async def main():
         
         print(f'let"s get started!')
         # 3. change the values by using set value
-        Pc_ProgID = 75
+        Pc_ProgID = 76
         Pc_Start = True
 
         await NODE_Pc_ProgID.set_value(Pc_ProgID,ua.VariantType.Int32)

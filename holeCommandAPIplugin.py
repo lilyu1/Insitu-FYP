@@ -41,7 +41,7 @@ class HoleCommandAPIPlugin(octoprint.plugin.SimpleApiPlugin):
             comm.sendCommand('G91')
             comm.sendCommand('G1 Z10')
             comm.sendCommand('G90')
-            comm.sendCommand('G0 Y220')
+            comm.sendCommand('G0 Y220') #hardcoded, can we get this from somewhere?
             comm.sendCommand('@pause')
         except ValueError:
             self._logger.error("Failed to extract coordinates from @hole command")
