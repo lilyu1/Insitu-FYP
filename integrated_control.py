@@ -44,11 +44,21 @@ async def main():
                 paused_flag = printer_info['state']['flags']['pausing'] #true or false
                 print(paused_flag)
                 await asyncio.sleep(1) #poll every 1 sec
+
+                if paused_flag:
+                    # # get hole coordinates from holecommandapi plugin
+                    num_holes, str_coord, hole_type = await get_hole_info()
+                    #returns 0,0,0 if error retrieving hole info
+                    if num_holes == 0:
+                        paused_flag = False #continue polling
+
             except:
                 print('error with printer')
                 print(printer_info)
             
-        print('i have broken out - printer has paused')
+        print('i have broken out - printer has paused due to plugin')
+        return num_holes, str_coord, hole_type
+
     #update opcua control
 
     async def OPCUA_GetValue():
@@ -101,15 +111,19 @@ async def main():
         request = requests.post(urlJob+apikey,json={"command": "pause","action": "resume"})
 
     async def get_hole_info():
-        print('getting coords from custom API. ')
-        response_get = requests.get(urlHole+apikey)
-        print(response_get.json())
-        hole_type = response_get.json()['type']
-        json_coords = response_get.json()['coordinates']
-        print("coordinates ofc holes:", json_coords) #[[123,456,2],[111,222,2]]
-        str_coord = str(json_coords)
-        num_holes = len(eval(str_coord))
-        return num_holes, str_coord, hole_type
+        try:
+            print('getting coords from custom API. ')
+            response_get = requests.get(urlHole+apikey)
+            print(response_get.json())
+            hole_type = response_get.json()['type']
+            json_coords = response_get.json()['coordinates']
+            print("coordinates ofc holes:", json_coords) #[[123,456,2],[111,222,2]]
+            str_coord = str(json_coords)
+            num_holes = len(eval(str_coord))
+            return num_holes, str_coord, hole_type
+        except:
+            print("Error: Getting Hole Info")
+            return 0,0,0
     
     async def send_coordinates_to_opcua(client, write_magCount, write_magInfo):
         print('sending coordinates to OPCUA. info to be sent: ')
@@ -231,18 +245,12 @@ async def main():
         # #2. make sure program is not running
         await robot_reset_prog()
 
-        # #3. waiting for printing to pause. while loop inside
-        await polling_printer_pause()
-
-        # # get hole coordinates from holecommandapi plugin
-        num_holes, str_coord, hole_type = await get_hole_info()
-        print('this is hole type ' + hole_type)
-
+        # #3. waiting for printing to pause triggered by plugin. while loop inside
+        num_holes, str_coord, hole_type = await polling_printer_pause()
         # # send to opcua server
         await send_coordinates_to_opcua(client, num_holes, str_coord)
 
         # #3. change the values by using set value. 75 for magnet.
-
         if hole_type == "magnet":
             await robot_startprog(magnet_ProgID)
 
