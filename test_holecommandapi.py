@@ -1,20 +1,20 @@
 import requests
 
 # Base URL of the OctoPrint instance
-#url_base = 'http://localhost:5000/api/plugin/holeCommandAPIplugin'
-url_base = 'http://localhost:5000/api/plugin/insituCommandAPIplugin'
+url_base = 'http://localhost:5000/api/plugin/holeCommandAPIplugin'
+#url_base = 'http://localhost:5000/api/plugin/insituCommandAPIplugin'
 #url_base = 'http://172.32.1.210:5000/api/plugin/holeCommandAPIplugin'
 
 #it's case sensitive bitch
 
 # Your API key
-apikey = '40D71A0A911C4E2CB0DD05BC50960A6B' #local
-#apikey = "CF0D132DDC3342CD8EC1EE9D5FCFDA06" #rpi
+#apikey = '40D71A0A911C4E2CB0DD05BC50960A6B' #local
+apikey = "CF0D132DDC3342CD8EC1EE9D5FCFDA06" #rpi
 
 # Send a GET request to the same plugin API
 response_get = requests.get(f'{url_base}?apikey={apikey}')
 
-print(response_get.json()['type'])
+#print(response_get.json()['type'])
 
 json_coord = response_get.json()['coordinates']
 

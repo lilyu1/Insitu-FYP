@@ -17,6 +17,7 @@ async def main():
     urlHead = 'http://'+IPadd+':5000/api/printer/printhead'  # Printhead control (Jogging)
     urlTool = 'http://'+IPadd+':5000/api/printer/tool'   # Tool contorl (temperature)
     urlBed = 'http://'+IPadd+':5000/api/printer/bed' 
+    urlGcode ='http://'+IPadd+':5000/api/printer/command'
     opcurl = 'opc.tcp://172.32.1.236:4840'
     nP = 3
     nodeStr = 'ns=2'+str(nP)+';s=R'+str(nP)
@@ -36,17 +37,18 @@ async def main():
         paused_flag = False
         while not paused_flag: #while printing
             now = datetime.datetime.now()
-            print(f'polling {now}')
+            print(f'polling printer pause {now}')
             try:
                 response = requests.get(urlPrinter+apikey)
                 printer_info = response.json()
                 #print(printer_info)
                 paused_flag = printer_info['state']['flags']['pausing'] #true or false
-                print(paused_flag)
+                print("is printer paused? " + paused_flag)
                 await asyncio.sleep(1) #poll every 1 sec
             except:
                 print('error with printer')
                 print(printer_info)
+                await asyncio.sleep(1) #poll every 1 sec
             
         print('i have broken out - printer has paused')
     #update opcua control
@@ -86,7 +88,7 @@ async def main():
         await NODE_Pc_Start.set_value(Pc_Start,ua.VariantType.Boolean)
         print('start=false sent')
 
-    async def printer_resume():
+    async def printer_resume(session):
         print('resume print via api')
         #check if robot has stopped moving
         robot_ready = False
@@ -98,6 +100,15 @@ async def main():
             await asyncio.sleep(1) #poll every 1 sec
 
         print('robot is clear (?), resume print')
+        command = 'M83'
+        payload = {"command": command} #IMPORTANT!!
+        async with session.post(urlGcode + apikey, json=payload) as response:
+            if response.status == 204:
+                print(f'Successfully sent G-code: {command}')
+            else:
+                print(f'Failed to send G-code: {command}. Status: {response.status}')
+                response_text = await response.text()
+                print(f'Response: {response_text}')
         request = requests.post(urlJob+apikey,json={"command": "pause","action": "resume"})
 
     async def get_hole_info():
@@ -218,43 +229,44 @@ async def main():
 
     #tell the robot to start
     async with Client(url=opcurl) as client:   
-        
-        print(f'getting nodes')
-        #1. read values by getting node
-        try:
-            NODE_Pc_ProgID = client.get_node(nodeStr+'c_ProgID')
-            NODE_Pc_Start = client.get_node(nodeStr+'c_Start') #true or false
-        except:
-            print("Error: Node Definition")
+        # Using aiohttp session for async HTTP calls
+        async with aiohttp.ClientSession() as session:
+            print(f'getting nodes')
+            #1. read values by getting node
+            try:
+                NODE_Pc_ProgID = client.get_node(nodeStr+'c_ProgID')
+                NODE_Pc_Start = client.get_node(nodeStr+'c_Start') #true or false
+            except:
+                print("Error: Node Definition")
+
+        while True:
+            
+            # #2. make sure program is not running
+            await robot_reset_prog()
+
+            # #3. waiting for printing to pause. while loop inside
+            await polling_printer_pause()
+
+            # # get hole coordinates from holecommandapi plugin
+            num_holes, str_coord, hole_type = await get_hole_info()
+            print('this is hole type ' + hole_type)
+
+            # # send to opcua server
+            await send_coordinates_to_opcua(client, num_holes, str_coord)
+
+            # #3. change the values by using set value. 75 for magnet.
+
+            if hole_type == "magnet":
+                await robot_startprog(magnet_ProgID)
 
 
-        # #2. make sure program is not running
-        await robot_reset_prog()
-
-        # #3. waiting for printing to pause. while loop inside
-        await polling_printer_pause()
-
-        # # get hole coordinates from holecommandapi plugin
-        num_holes, str_coord, hole_type = await get_hole_info()
-        print('this is hole type ' + hole_type)
-
-        # # send to opcua server
-        await send_coordinates_to_opcua(client, num_holes, str_coord)
-
-        # #3. change the values by using set value. 75 for magnet.
-
-        if hole_type == "magnet":
-            await robot_startprog(magnet_ProgID)
-
-
-        elif hole_type == "ïnsert":
-            await robot_startprog(insert_ProgID)
-            # Using aiohttp session for async HTTP calls
-            async with aiohttp.ClientSession() as session:
+            elif hole_type == "ïnsert":
+                await robot_startprog(insert_ProgID)
+                
                 await heat_inserts(session, str_coord)
 
-        # Continue with other steps such as printer_resume
-        await printer_resume()
+            # Continue with other steps such as printer_resume
+            await printer_resume(session)
 
 
         
