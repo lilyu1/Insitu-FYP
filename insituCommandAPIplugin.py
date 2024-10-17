@@ -48,12 +48,20 @@ class InsituCommandAPIPlugin(octoprint.plugin.SimpleApiPlugin):
             comm.sendCommand('@pause')
         except ValueError:
             self._logger.error(f"Failed to extract coordinates from @{self.command_type} command")
+            
+    # Add a method to reset coordinates and command type
+    def reset_data(self):
+        self.coordinates = None
+        self.command_type = None
 
     # API GET request handling
     def on_api_get(self, request):
         # Return the coordinates and command type if set, or a default response
         if self.coordinates and self.command_type:
-            return flask.jsonify(coordinates=self.coordinates, type=self.command_type)
+            response =  flask.jsonify(coordinates=self.coordinates, type=self.command_type)
+            self.reset_data()  # Clear the data after it's returned. idk if this works??
+            return response
+
         else:
             return flask.jsonify(message="No coordinates set or command type specified")
 
